@@ -1,0 +1,92 @@
+version: "3.9"
+
+services:
+  # ─── Frontend (Next.js 15) ───────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000/api
+      - NEXT_PUBLIC_WS_URL=http://localhost:5000
+      - NEXT_PUBLIC_ML_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - ai-stock-net
+
+  # ─── Backend (Express.js) ────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME:-admin}:${MONGO_INITDB_ROOT_PASSWORD:-changeme}@mongo:27017/ai-stock?authSource=admin
+      - REDIS_HOST=redis
+      - ML_SERVICE_URL=http://ml-service:8000
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - ai-stock-net
+
+  # ─── ML Service (FastAPI) ────────────────────
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./ml-service:/app
+      - ./ml-service/models:/app/models
+    networks:
+      - ai-stock-net
+
+  # ─── MongoDB ─────────────────────────────────
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-changeme}
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - ai-stock-net
+
+  # ─── Redis ───────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - ai-stock-net
+
+volumes:
+  mongo-data:
+  redis-data:
+
+networks:
+  ai-stock-net:
+    driver: bridge

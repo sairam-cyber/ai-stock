@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Python
+ml-service/venv/
+ml-service/.venv/
+ml-service/models/*.h5
+ml-service/models/*.pkl
+ml-service/models/*.joblib
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Docker
+docker-compose.override.yml
+
+# Coverage
+coverage/
+.nyc_output/
+htmlcov/
+
+# Misc
+*.tsbuildinfo
+.turbo/
