@@ -104,7 +104,7 @@ export function StockChart({ symbol }: { symbol: string }) {
       seriesRef.current = candlestickSeries;
     } else {
       const lineSeries = chartRef.current.addSeries(LineSeries, {
-        color: "oklch(0.70 0.25 270)",
+        color: "#8b5cf6",
         lineWidth: 2,
       });
       const lineData = data.map((d) => ({ time: d.time, value: d.close }));

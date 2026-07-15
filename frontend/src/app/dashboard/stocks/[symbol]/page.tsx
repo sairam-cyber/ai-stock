@@ -13,11 +13,23 @@ import {
   Plus,
   Check,
   Loader2,
+  Brain,
+  Cpu,
+  TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  LineChart as RechartsLineChart,
+  Line as RechartsLine,
+  XAxis as RechartsXAxis,
+  YAxis as RechartsYAxis,
+  CartesianGrid as RechartsCartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer as RechartsResponsiveContainer,
+} from "recharts";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StockChart } from "@/components/dashboard/stock-chart";
 import { SentimentTracker } from "@/components/dashboard/sentiment-tracker";
@@ -60,6 +72,13 @@ export default function StockDetailPage({
   const [loading, setLoading] = useState(true);
   const [flashState, setFlashState] = useState<"up" | "down" | null>(null);
 
+  // Forecast states
+  const [forecastData, setForecastData] = useState<any>(null);
+  const [forecastDays, setForecastDays] = useState(30);
+  const [preferredModel, setPreferredModel] = useState("xgboost");
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [trainingLoading, setTrainingLoading] = useState(false);
+
   // Fetch stock summary
   useEffect(() => {
     let active = true;
@@ -83,6 +102,43 @@ export default function StockDetailPage({
     };
   }, [symbol]);
 
+  // Fetch forecast
+  const fetchForecast = async () => {
+    setForecastLoading(true);
+    try {
+      const { data } = await api.get(`/stocks/${symbol}/forecast`, {
+        params: { days: forecastDays, model: preferredModel }
+      });
+      setForecastData(data);
+    } catch (err) {
+      console.error("Error loading forecast model:", err);
+    } finally {
+      setForecastLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchForecast();
+  }, [symbol, forecastDays, preferredModel]);
+
+  // Model Training
+  const handleTrainModel = async () => {
+    setTrainingLoading(true);
+    try {
+      const { data } = await api.post(`/stocks/${symbol}/train`, {}, {
+        params: { model: preferredModel }
+      });
+      if (data.success) {
+        toast.success(`Model trained successfully in ${data.duration_seconds}s!`);
+        fetchForecast();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || "Model weight training failed");
+    } finally {
+      setTrainingLoading(false);
+    }
+  };
+
   // Real-time Socket.IO Stream for live ticks
   useEffect(() => {
     socket.connect();
@@ -91,8 +147,8 @@ export default function StockDetailPage({
     const handlePriceUpdate = (update: {
       symbol: string;
       price: number;
+      changeValue: number;
       change: number;
-      changePercent: number;
     }) => {
       if (update.symbol.toUpperCase() === symbol.toUpperCase()) {
         setStock((prev) => {
@@ -109,8 +165,8 @@ export default function StockDetailPage({
           return {
             ...prev,
             price: update.price,
-            changeValue: update.change,
-            change: update.changePercent,
+            changeValue: update.changeValue,
+            change: update.change,
           };
         });
       }
@@ -155,6 +211,33 @@ export default function StockDetailPage({
     }
   };
 
+  const getForecastChartData = () => {
+    if (!forecastData) return [];
+    
+    // Last 15 days of history for context
+    const history = forecastData.historical.slice(-15).map((h: any) => ({
+      time: h.time,
+      price: h.value,
+      type: "Historical"
+    }));
+
+    const lastHistory = history[history.length - 1];
+
+    const forecast = forecastData.forecast.map((f: any) => ({
+      time: f.time,
+      forecast: f.value,
+      lower: f.lower,
+      upper: f.upper,
+      type: "Forecast"
+    }));
+
+    if (lastHistory && forecast.length > 0) {
+      forecast[0].price = lastHistory.price;
+    }
+
+    return [...history, ...forecast];
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col justify-center items-center min-h-[80vh]">
@@ -175,9 +258,10 @@ export default function StockDetailPage({
   }
 
   const isPositive = stock.change >= 0;
+  const mergedChartData = getForecastChartData();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 pb-16">
       {/* Back Button & Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -248,7 +332,7 @@ export default function StockDetailPage({
               ? "text-stock-down" 
               : ""
           }`}>
-            ${stock.price.toFixed(2)}
+            ${(stock.price ?? 0).toFixed(2)}
           </p>
         </div>
         <div className={`transition-all duration-300 rounded-lg p-1 ${
@@ -278,8 +362,8 @@ export default function StockDetailPage({
               <ArrowDownRight className="h-5 w-5" />
             )}
             {isPositive ? "+" : ""}
-            {stock.changeValue.toFixed(2)} ({isPositive ? "+" : ""}
-            {stock.change.toFixed(2)}%)
+            {(stock.changeValue ?? 0).toFixed(2)} ({isPositive ? "+" : ""}
+            {(stock.change ?? 0).toFixed(2)}%)
           </p>
         </div>
         <div>
@@ -301,6 +385,154 @@ export default function StockDetailPage({
         {/* Left Columns (Chart + Stats) */}
         <div className="xl:col-span-2 space-y-6">
           <StockChart symbol={symbol} />
+
+          {/* AI Forecast Engine Card */}
+          <Card glass className="p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-base font-bold flex items-center gap-2">
+                  <Brain className="h-5 w-5 text-primary animate-pulse" />
+                  AI Forecast Engine
+                </h3>
+                <CardDescription className="text-xs mt-1">
+                  Predict future prices and evaluate weights. Current:{" "}
+                  <span className="font-semibold text-primary">
+                    {forecastData?.model || "Loading..."}
+                  </span>
+                </CardDescription>
+              </div>
+
+              {/* Forecast Parameter Selector */}
+              <div className="flex flex-wrap gap-2 items-center">
+                <select
+                  value={preferredModel}
+                  onChange={(e) => setPreferredModel(e.target.value)}
+                  className="bg-background text-foreground text-xs rounded-xl border border-border px-3 py-1.5 h-9 font-medium"
+                >
+                  <option value="xgboost">XGBoost Weights</option>
+                  <option value="ridge">Ridge Regression</option>
+                  <option value="prophet">Prophet Model</option>
+                </select>
+
+                <select
+                  value={forecastDays}
+                  onChange={(e) => setForecastDays(Number(e.target.value))}
+                  className="bg-background text-foreground text-xs rounded-xl border border-border px-3 py-1.5 h-9 font-medium"
+                >
+                  <option value={7}>7 Days Forecast</option>
+                  <option value={14}>14 Days Forecast</option>
+                  <option value={30}>30 Days Forecast</option>
+                </select>
+
+                <Button
+                  onClick={handleTrainModel}
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl h-9 gap-1 text-xs"
+                  disabled={trainingLoading}
+                >
+                  {trainingLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Cpu className="h-3 w-3" />
+                  )}
+                  Retrain Weights
+                </Button>
+              </div>
+            </div>
+
+            {/* Forecast Chart */}
+            <div className="h-[280px] w-full">
+              {forecastLoading ? (
+                <div className="h-full flex flex-col justify-center items-center">
+                  <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                  <span className="text-xs text-muted-foreground mt-2 font-medium">Re-computing price model...</span>
+                </div>
+              ) : (
+                <RechartsResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={mergedChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <RechartsCartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                    <RechartsXAxis
+                      dataKey="time"
+                      fontSize={9}
+                      stroke="var(--muted-foreground)"
+                      tickFormatter={(t) => t.slice(5)} // Show MM-DD
+                    />
+                    <RechartsYAxis
+                      fontSize={9}
+                      stroke="var(--muted-foreground)"
+                      domain={["auto", "auto"]}
+                      tickFormatter={(v) => `$${v}`}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        fontSize: "11px",
+                      }}
+                      formatter={(val: any, name: any) => [
+                        val !== null && val !== undefined ? `$${Number(val).toFixed(2)}` : "N/A",
+                        name === "price" ? "Actual / Connection" : name === "forecast" ? "AI Estimate" : name === "upper" ? "Confidence Upper" : "Confidence Lower",
+                      ]}
+                    />
+                    {/* Actual historical line */}
+                    <RechartsLine
+                      type="monotone"
+                      dataKey="price"
+                      stroke="var(--primary)"
+                      strokeWidth={2}
+                      dot={false}
+                      name="price"
+                    />
+                    {/* Forecasted line */}
+                    <RechartsLine
+                      type="monotone"
+                      dataKey="forecast"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={false}
+                      name="forecast"
+                    />
+                    {/* Upper confidence bounds */}
+                    <RechartsLine
+                      type="monotone"
+                      dataKey="upper"
+                      stroke="#8b5cf6"
+                      strokeWidth={1}
+                      strokeDasharray="2 2"
+                      opacity={0.5}
+                      dot={false}
+                      name="upper"
+                    />
+                    {/* Lower confidence bounds */}
+                    <RechartsLine
+                      type="monotone"
+                      dataKey="lower"
+                      stroke="#8b5cf6"
+                      strokeWidth={1}
+                      strokeDasharray="2 2"
+                      opacity={0.5}
+                      dot={false}
+                      name="lower"
+                    />
+                  </RechartsLineChart>
+                </RechartsResponsiveContainer>
+              )}
+            </div>
+            <div className="flex items-center justify-center gap-4 text-[9px] text-muted-foreground mt-4">
+              <div className="flex items-center gap-1">
+                <div className="h-0.5 w-4 bg-primary" /> Historical
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="h-0.5 w-4 border-t-2 border-dashed border-[#8b5cf6]" /> AI Estimate (Next {forecastDays} Days)
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="h-0.5 w-4 border-t border-dotted border-[#8b5cf6]" /> 95% Confidence Bounds
+              </div>
+            </div>
+          </Card>
 
           {/* Key Indicators Grid */}
           <Card glass>

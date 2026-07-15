@@ -119,4 +119,58 @@ router.get("/:symbol/forecast", async (req, res) => {
   }
 });
 
+// ─── Optimize Portfolio Allocation ────────────
+router.get("/optimize", async (req, res) => {
+  try {
+    const { symbols, riskFreeRate } = req.query;
+    if (!symbols) {
+      return res.status(400).json({ success: false, message: "Symbols query parameter is required" });
+    }
+
+    const symbolList = symbols.split(",").map(s => s.trim().toUpperCase());
+    
+    const response = await axios.get(`${ML_SERVICE_URL}/api/stock/optimize`, {
+      params: { 
+        symbols: symbolList, 
+        risk_free_rate: riskFreeRate || 0.02 
+      },
+      paramsSerializer: (params) => {
+        // Query param serializer for arrays: ?symbols=AAPL&symbols=MSFT
+        const parts = [];
+        if (params.symbols) {
+          params.symbols.forEach(s => parts.push(`symbols=${encodeURIComponent(s)}`));
+        }
+        parts.push(`risk_free_rate=${params.risk_free_rate}`);
+        return parts.join("&");
+      }
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error("Error optimizing portfolio:", error.message);
+    const statusCode = error.response?.status || 500;
+    const message = error.response?.data?.detail || "Error performing portfolio optimization";
+    res.status(statusCode).json({ success: false, message });
+  }
+});
+
+// ─── Trigger Model Training ───────────────────
+router.post("/:symbol/train", async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { model } = req.query;
+
+    const response = await axios.post(`${ML_SERVICE_URL}/api/stock/train`, null, {
+      params: { symbol, model: model || "xgboost" }
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error(`Error training model for ${req.params.symbol}:`, error.message);
+    const statusCode = error.response?.status || 500;
+    const message = error.response?.data?.detail || "Error training stock model";
+    res.status(statusCode).json({ success: false, message });
+  }
+});
+
 module.exports = router;

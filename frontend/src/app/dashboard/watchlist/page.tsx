@@ -140,7 +140,7 @@ export default function WatchlistPage() {
                   <CardContent className="p-4 pt-2">
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-lg font-bold">${stock.price.toFixed(2)}</p>
+                        <p className="text-lg font-bold">${(stock.price ?? 0).toFixed(2)}</p>
                         <p className="text-[9px] text-muted-foreground mt-0.5">Vol: {stock.volume}</p>
                       </div>
                       <Badge
@@ -153,7 +153,7 @@ export default function WatchlistPage() {
                           <ArrowDownRight className="h-3 w-3" />
                         )}
                         {isPositive ? "+" : ""}
-                        {stock.change.toFixed(2)}%
+                        {(stock.change ?? 0).toFixed(2)}%
                       </Badge>
                     </div>
                   </CardContent>

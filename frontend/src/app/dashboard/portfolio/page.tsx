@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Briefcase,
   TrendingUp,
@@ -12,15 +12,31 @@ import {
   DollarSign,
   Plus,
   Trash2,
+  Brain,
+  Sparkles,
+  Sliders,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  ScatterChart,
+  Scatter,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from "recharts";
 
 import { api } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
 import {
   Dialog,
   DialogContent,
@@ -62,6 +78,12 @@ export default function PortfolioPage() {
   const [isBuying, setIsBuying] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // Optimizer State
+  const [optimizeSymbols, setOptimizeSymbols] = useState("AAPL, MSFT, TSLA, NVDA, AMZN");
+  const [riskFreeRate, setRiskFreeRate] = useState(2); // In percentage (e.g. 2%)
+  const [optimizationResult, setOptimizationResult] = useState<any>(null);
+  const [optimizing, setOptimizing] = useState(false);
+
   const fetchPortfolio = async () => {
     try {
       const { data } = await api.get("/portfolio");
@@ -78,6 +100,12 @@ export default function PortfolioPage() {
   useEffect(() => {
     fetchPortfolio();
   }, []);
+
+  useEffect(() => {
+    if (portfolio?.holdings && portfolio.holdings.length > 0) {
+      setOptimizeSymbols(portfolio.holdings.map((h) => h.symbol).join(", "));
+    }
+  }, [portfolio]);
 
   const handleBuy = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -127,6 +155,28 @@ export default function PortfolioPage() {
     }
   };
 
+  const handleOptimize = async () => {
+    if (!optimizeSymbols.trim()) {
+      toast.error("Please specify at least 2 tickers for allocation analysis.");
+      return;
+    }
+    setOptimizing(true);
+    try {
+      const { data } = await api.get("/stocks/optimize", {
+        params: {
+          symbols: optimizeSymbols,
+          riskFreeRate: Number(riskFreeRate) / 100, // convert percentage to fraction
+        },
+      });
+      setOptimizationResult(data);
+      toast.success("AI portfolio optimization model calculated!");
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Portfolio optimization model failure");
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-6 flex justify-center items-center h-[50vh]">
@@ -149,7 +199,7 @@ export default function PortfolioPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-8 pb-16">
       {/* Header section with Buy action */}
       <div className="flex items-center justify-between">
         <div>
@@ -258,7 +308,7 @@ export default function PortfolioPage() {
                   <span className="text-right">Total Cost</span>
                   <span className="text-right">Actions</span>
                 </div>
-                {portfolio?.holdings.map((h, i) => (
+                {portfolio?.holdings.map((h) => (
                   <div
                     key={h.symbol}
                     className="grid grid-cols-5 gap-2 items-center px-2 py-3 rounded-lg border border-border/40 hover:bg-accent/40 transition-colors"
@@ -345,6 +395,270 @@ export default function PortfolioPage() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      <Separator />
+
+      {/* ─── AI PORTFOLIO OPTIMIZER (PHASE 4) ─── */}
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
+            <Brain className="h-5 w-5 text-primary" />
+            AI Portfolio Optimizer
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Utilize Markowitz Modern Portfolio Theory (Mean-Variance) to find optimal allocations based on Sharpe Ratio.
+          </p>
+        </div>
+
+        <Card glass className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-primary" /> Tickers to Optimize
+              </label>
+              <Input
+                placeholder="e.g. AAPL, MSFT, TSLA"
+                value={optimizeSymbols}
+                onChange={(e) => setOptimizeSymbols(e.target.value)}
+                className="rounded-xl"
+              />
+              <span className="text-[10px] text-muted-foreground block">
+                Comma-separated tickers (min 2). Automatically matches your holdings on load.
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                <Sliders className="h-3 w-3 text-primary" /> Risk-Free Rate (%)
+              </label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="10"
+                value={riskFreeRate}
+                onChange={(e) => setRiskFreeRate(Number(e.target.value))}
+                className="rounded-xl"
+              />
+              <span className="text-[10px] text-muted-foreground block">
+                Benchmark interest rate (default 2% / 0.02)
+              </span>
+            </div>
+
+            <div>
+              <Button
+                onClick={handleOptimize}
+                className="w-full rounded-xl gap-2 font-semibold"
+                disabled={optimizing}
+              >
+                {optimizing ? (
+                  <>
+                    <Activity className="h-4 w-4 animate-pulse" />
+                    Calculating frontier...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-4 w-4" />
+                    Optimize Allocations
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        {/* Results Visuals */}
+        <AnimatePresence>
+          {optimizationResult && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 15 }}
+              transition={{ duration: 0.4 }}
+              className="grid grid-cols-1 lg:grid-cols-3 gap-6"
+            >
+              {/* Max Sharpe Ratio */}
+              <Card glass className="p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <Badge variant="primary" className="rounded-lg px-2 py-0.5">
+                      Max Sharpe Portfolio
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground">Optimal Risk/Reward</span>
+                  </div>
+                  <div className="space-y-2 mb-6">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-muted-foreground">Expected Return</span>
+                      <span className="text-lg font-bold text-stock-up">
+                        {(optimizationResult.maxSharpe.return * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-muted-foreground">Annualized Risk</span>
+                      <span className="text-sm font-semibold">
+                        {(optimizationResult.maxSharpe.volatility * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-muted-foreground">Sharpe Ratio</span>
+                      <span className="text-sm font-bold text-primary">
+                        {optimizationResult.maxSharpe.sharpeRatio.toFixed(3)}
+                      </span>
+                    </div>
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="space-y-3">
+                    <span className="text-xs font-semibold text-muted-foreground">Allocations:</span>
+                    {Object.entries(optimizationResult.maxSharpe.allocation).map(([symbol, weight]: any) => (
+                      <div key={symbol} className="space-y-1">
+                        <div className="flex justify-between text-xs font-medium">
+                          <span>{symbol}</span>
+                          <span>{(weight * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-accent rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full"
+                            style={{ width: `${weight * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+
+              {/* Min Volatility */}
+              <Card glass className="p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <Badge variant="success" className="rounded-lg px-2 py-0.5">
+                      Min Volatility Portfolio
+                    </Badge>
+                    <span className="text-[10px] text-muted-foreground">Safest Allocation</span>
+                  </div>
+                  <div className="space-y-2 mb-6">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-muted-foreground">Expected Return</span>
+                      <span className="text-sm font-semibold">
+                        {(optimizationResult.minVolatility.return * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-muted-foreground">Annualized Risk</span>
+                      <span className="text-lg font-bold text-stock-down">
+                        {(optimizationResult.minVolatility.volatility * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs text-muted-foreground">Sharpe Ratio</span>
+                      <span className="text-sm font-bold">
+                        {optimizationResult.minVolatility.sharpeRatio.toFixed(3)}
+                      </span>
+                    </div>
+                  </div>
+                  <Separator className="my-4" />
+                  <div className="space-y-3">
+                    <span className="text-xs font-semibold text-muted-foreground">Allocations:</span>
+                    {Object.entries(optimizationResult.minVolatility.allocation).map(([symbol, weight]: any) => (
+                      <div key={symbol} className="space-y-1">
+                        <div className="flex justify-between text-xs font-medium">
+                          <span>{symbol}</span>
+                          <span>{(weight * 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-accent rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full"
+                            style={{ width: `${weight * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+
+              {/* Efficient Frontier Plot */}
+              <Card glass className="p-6 flex flex-col justify-between">
+                <div>
+                  <CardTitle className="text-sm font-semibold mb-2">Efficient Frontier (Markowitz)</CardTitle>
+                  <CardDescription className="text-[10px] mb-4">
+                    Scatter mapping expected annual returns against risk volatility.
+                  </CardDescription>
+                  <div className="h-[220px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ScatterChart margin={{ top: 10, right: 10, bottom: 0, left: -20 }}>
+                        <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                        <XAxis
+                          type="number"
+                          dataKey="volatility"
+                          name="Risk"
+                          tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                          fontSize={9}
+                          stroke="var(--muted-foreground)"
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="return"
+                          name="Return"
+                          tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                          fontSize={9}
+                          stroke="var(--muted-foreground)"
+                        />
+                        <Tooltip
+                          cursor={{ strokeDasharray: "3 3" }}
+                          contentStyle={{
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "12px",
+                            fontSize: "11px",
+                          }}
+                          formatter={(value: any, name: any) => [
+                            value !== null && value !== undefined ? `${(Number(value) * 100).toFixed(1)}%` : "N/A",
+                            name === "volatility" ? "Annual Risk" : "Expected Return",
+                          ]}
+                        />
+                        <Scatter
+                          name="Frontier Portfolios"
+                          data={optimizationResult.efficientFrontier}
+                          fill="var(--muted-foreground)"
+                          opacity={0.35}
+                        />
+                        <Scatter
+                          name="Optimal (Max Sharpe)"
+                          data={[{
+                            volatility: optimizationResult.maxSharpe.volatility,
+                            return: optimizationResult.maxSharpe.return
+                          }]}
+                          fill="var(--primary)"
+                        />
+                        <Scatter
+                          name="Min Risk (Min Vol)"
+                          data={[{
+                            volatility: optimizationResult.minVolatility.volatility,
+                            return: optimizationResult.minVolatility.return
+                          }]}
+                          fill="oklch(0.60 0.15 150)"
+                        />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex items-center justify-center gap-4 text-[9px] text-muted-foreground mt-2">
+                    <div className="flex items-center gap-1">
+                      <div className="h-2 w-2 rounded-full bg-primary" /> Max Sharpe
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="h-2 w-2 rounded-full bg-emerald-500" /> Min Volatility
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="h-2 w-2 rounded-full bg-muted-foreground/45" /> Simulated
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
