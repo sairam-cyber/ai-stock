@@ -15,6 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { TableRowSkeleton } from "@/components/ui/skeletons";
+import { EmptyState } from "@/components/ui/empty-state";
 
 interface HoldingItem {
   symbol: string;
@@ -155,10 +157,7 @@ export function PortfolioWidget() {
       </CardHeader>
       <CardContent className="space-y-5">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-2">
-            <Loader2 className="h-6 w-6 text-primary animate-spin" />
-            <span className="text-xs text-muted-foreground">Loading portfolio details...</span>
-          </div>
+          <TableRowSkeleton rows={3} />
         ) : (
           <>
             {/* Total Value */}
@@ -220,20 +219,20 @@ export function PortfolioWidget() {
             {/* Holdings List */}
             <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
               {holdings.length === 0 ? (
-                <div className="text-center py-6 border border-dashed border-border rounded-xl">
-                  <p className="text-xs text-muted-foreground">No holdings in portfolio</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    Available cash balance: ${cashBalance.toLocaleString()}
-                  </p>
-                  <Button
-                    variant="link"
-                    size="sm"
-                    className="text-[10px] mt-2 h-auto p-0"
-                    onClick={() => router.push("/dashboard/stocks")}
-                  >
-                    Start trading
-                  </Button>
-                </div>
+                <EmptyState
+                  type="portfolio"
+                  message={`Available cash: $${cashBalance.toLocaleString()}`}
+                  action={
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs rounded-xl h-8"
+                      onClick={() => router.push("/dashboard/stocks")}
+                    >
+                      Start trading
+                    </Button>
+                  }
+                />
               ) : (
                 holdings.map((h, i) => {
                   const holdingPositive = h.liveChange >= 0;

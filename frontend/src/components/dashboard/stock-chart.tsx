@@ -5,8 +5,9 @@ import { createChart, ColorType, ISeriesApi, CandlestickSeries, LineSeries } fro
 import { useTheme } from "next-themes";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ChartSkeleton } from "@/components/ui/skeletons";
+import { ErrorState } from "@/components/ui/error-state";
 
 interface ChartDataPoint {
   time: string;
@@ -24,7 +25,8 @@ export function StockChart({ symbol }: { symbol: string }) {
   const [period, setPeriod] = useState<string>("1y");
   const [data, setData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [error, setError] = useState(false);
+
   const chartRef = useRef<any>(null);
   const seriesRef = useRef<ISeriesApi<any> | null>(null);
 
@@ -33,29 +35,29 @@ export function StockChart({ symbol }: { symbol: string }) {
     let active = true;
     const fetchHistory = async () => {
       setLoading(true);
+      setError(false);
       try {
         let interval = "1d";
-        if (period === "1mo" || period === "5d") interval = "1h"; // finer details for short periods
+        if (period === "1mo" || period === "5d") interval = "1h";
         if (period === "1d") interval = "5m";
-        
+
         const res = await api.get(`/stocks/${symbol}/history`, {
-          params: { period, interval }
+          params: { period, interval },
         });
-        
+
         if (res.data.success && active) {
           setData(res.data.data);
         }
       } catch (err) {
         console.error(`Failed to load history for ${symbol}:`, err);
+        if (active) setError(true);
       } finally {
         if (active) setLoading(false);
       }
     };
 
     fetchHistory();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [symbol, period]);
 
   // Chart rendering and resizing logic
@@ -181,10 +183,14 @@ export function StockChart({ symbol }: { symbol: string }) {
       
       <CardContent>
         {loading ? (
-          <div className="w-full h-[380px] flex flex-col justify-center items-center">
-            <Loader2 className="h-6 w-6 text-primary animate-spin" />
-            <span className="text-xs text-muted-foreground mt-2 font-medium">Loading charting points...</span>
-          </div>
+          <ChartSkeleton />
+        ) : error ? (
+          <ErrorState
+            type="server"
+            title="Chart data unavailable"
+            message="Could not fetch historical price data. Make sure the ML service is running."
+            onRetry={() => { setError(false); setLoading(true); }}
+          />
         ) : (
           <div ref={chartContainerRef} className="w-full relative min-h-[380px]" />
         )}

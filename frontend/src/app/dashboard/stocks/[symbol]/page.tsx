@@ -47,6 +47,8 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { StatsGridSkeleton } from "@/components/ui/skeletons";
+import { ErrorState } from "@/components/ui/error-state";
 
 interface StockSummary {
   symbol: string;
@@ -80,6 +82,7 @@ export default function StockDetailPage({
   
   const [stock, setStock] = useState<StockSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [flashState, setFlashState] = useState<"up" | "down" | null>(null);
 
   // Forecast states
@@ -154,6 +157,7 @@ export default function StockDetailPage({
     let active = true;
     const fetchSummary = async () => {
       setLoading(true);
+      setError(false);
       try {
         const { data } = await api.get(`/stocks/${symbol}/summary`);
         if (data.success && active) {
@@ -162,14 +166,13 @@ export default function StockDetailPage({
       } catch (err) {
         console.error("Error loading stock summary:", err);
         toast.error(`Could not retrieve details for ${symbol}`);
+        if (active) setError(true);
       } finally {
         if (active) setLoading(false);
       }
     };
     fetchSummary();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [symbol]);
 
   // Fetch forecast
@@ -310,19 +313,32 @@ export default function StockDetailPage({
 
   if (loading) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-[80vh]">
-        <Loader2 className="h-8 w-8 text-primary animate-spin" />
-        <span className="text-sm text-muted-foreground mt-3 font-semibold">Retrieving real-time stock data...</span>
+      <div className="p-6 space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="shimmer h-9 w-9 rounded-xl" />
+          <div className="space-y-1.5">
+            <div className="shimmer h-6 w-32 rounded-full" />
+            <div className="shimmer h-3 w-48 rounded-full" />
+          </div>
+        </div>
+        <StatsGridSkeleton count={4} />
+        <div className="shimmer h-[420px] w-full rounded-2xl" />
       </div>
     );
   }
 
-  if (!stock) {
+  if (error || !stock) {
     return (
-      <div className="p-6 space-y-6 text-center">
-        <h2 className="text-xl font-bold">Asset Not Found</h2>
-        <p className="text-muted-foreground">We were unable to load details for {symbol}.</p>
-        <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+      <div className="p-6">
+        <ErrorState
+          type="server"
+          title={`Could not load ${symbol}`}
+          message="The ML service may be unavailable or the stock symbol is invalid. Try again."
+          onRetry={() => {
+            setError(false);
+            setLoading(true);
+          }}
+        />
       </div>
     );
   }
