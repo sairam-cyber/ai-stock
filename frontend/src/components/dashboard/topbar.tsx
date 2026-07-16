@@ -101,7 +101,12 @@ export function Topbar() {
         </Button>
 
         {/* Notifications */}
-        <Button variant="ghost" size="icon" className="relative rounded-xl">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative rounded-xl"
+          onClick={() => router.push("/dashboard/notifications")}
+        >
           <Bell className="h-4 w-4" />
           <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary animate-pulse" />
         </Button>

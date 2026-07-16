@@ -37,6 +37,16 @@ import { AIChatAssistant } from "@/components/dashboard/ai-chat-assistant";
 import { useAuthStore } from "@/stores/auth-store";
 import { api } from "@/lib/api";
 import { socket } from "@/lib/socket";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 interface StockSummary {
   symbol: string;
@@ -78,6 +88,66 @@ export default function StockDetailPage({
   const [preferredModel, setPreferredModel] = useState("xgboost");
   const [forecastLoading, setForecastLoading] = useState(false);
   const [trainingLoading, setTrainingLoading] = useState(false);
+
+  // Trading states
+  const [isTradeDialogOpen, setIsTradeDialogOpen] = useState(false);
+  const [tradeType, setTradeType] = useState<"buy" | "sell">("buy");
+  const [tradeShares, setTradeShares] = useState<number>(1);
+  const [isTrading, setIsTrading] = useState(false);
+  const [portfolio, setPortfolio] = useState<any>(null);
+
+  const fetchPortfolio = async () => {
+    try {
+      const { data } = await api.get("/portfolio");
+      if (data.success) {
+        setPortfolio(data.data);
+      }
+    } catch (error) {
+      console.error("Failed to load portfolio details for trading:", error);
+    }
+  };
+
+  const handleTrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (tradeShares <= 0) {
+      toast.error("Please enter a valid number of shares.");
+      return;
+    }
+
+    setIsTrading(true);
+    try {
+      if (tradeType === "buy") {
+        const { data } = await api.post("/portfolio/buy", {
+          symbol: symbol,
+          name: stock?.name || symbol + " Corporation",
+          shares: Number(tradeShares),
+          price: Number(stock?.price || 0),
+        });
+        if (data.success) {
+          toast.success(data.message);
+          setIsTradeDialogOpen(false);
+          setTradeShares(1);
+          fetchPortfolio();
+        }
+      } else {
+        const { data } = await api.post("/portfolio/sell", {
+          symbol: symbol,
+          shares: Number(tradeShares),
+          price: Number(stock?.price || 0),
+        });
+        if (data.success) {
+          toast.success(data.message);
+          setIsTradeDialogOpen(false);
+          setTradeShares(1);
+          fetchPortfolio();
+        }
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || `Failed to execute ${tradeType} trade`);
+    } finally {
+      setIsTrading(false);
+    }
+  };
 
   // Fetch stock summary
   useEffect(() => {
@@ -307,9 +377,137 @@ export default function StockDetailPage({
               </>
             )}
           </Button>
-          <Button variant="glow" size="sm" className="rounded-xl h-9 px-4">
-            Trade
-          </Button>
+          <Dialog open={isTradeDialogOpen} onOpenChange={setIsTradeDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                variant="glow"
+                size="sm"
+                className="rounded-xl h-9 px-4"
+                onClick={fetchPortfolio}
+              >
+                Trade
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span>Trade {symbol}</span>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {stock?.name}
+                  </Badge>
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Execute mock trades for this asset and manage your portfolio positions.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleTrade} className="space-y-4 pt-3">
+                {/* Buy/Sell Selector */}
+                <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+                  <button
+                    type="button"
+                    onClick={() => setTradeType("buy")}
+                    className={`rounded-lg py-1.5 text-xs font-bold transition-all ${
+                      tradeType === "buy"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Buy
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTradeType("sell")}
+                    className={`rounded-lg py-1.5 text-xs font-bold transition-all ${
+                      tradeType === "sell"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Sell
+                  </button>
+                </div>
+
+                {/* Shares input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    Shares
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    step="any"
+                    value={tradeShares}
+                    onChange={(e) => setTradeShares(Number(e.target.value))}
+                    className="rounded-xl"
+                    required
+                  />
+                </div>
+
+                {/* Price & Balance Info */}
+                <div className="rounded-xl border border-border bg-accent/20 p-4 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Market Price:</span>
+                    <span className="font-bold">${(stock?.price || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Est. Total:</span>
+                    <span className="font-bold text-primary">
+                      ${(tradeShares * (stock?.price || 0)).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  <Separator className="my-2" />
+                  {tradeType === "buy" ? (
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-muted-foreground">Cash Balance:</span>
+                      <span className={`font-semibold ${
+                        (portfolio?.cashBalance || 0) < tradeShares * (stock?.price || 0)
+                          ? "text-stock-down"
+                          : "text-stock-up"
+                      }`}>
+                        ${(portfolio?.cashBalance || 0).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-[11px]">
+                      <span className="text-muted-foreground">Position Size:</span>
+                      <span className={`font-semibold ${
+                        (portfolio?.holdings?.find((h: any) => h.symbol === symbol)?.shares || 0) < tradeShares
+                          ? "text-stock-down"
+                          : "text-primary"
+                      }`}>
+                        {portfolio?.holdings?.find((h: any) => h.symbol === symbol)?.shares || 0} shares owned
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full rounded-xl font-semibold"
+                  disabled={
+                    isTrading ||
+                    (tradeType === "buy" &&
+                      (portfolio?.cashBalance || 0) < tradeShares * (stock?.price || 0)) ||
+                    (tradeType === "sell" &&
+                      (portfolio?.holdings?.find((h: any) => h.symbol === symbol)?.shares || 0) < tradeShares)
+                  }
+                >
+                  {isTrading
+                    ? "Processing trade..."
+                    : tradeType === "buy"
+                    ? `Buy ${tradeShares} shares of ${symbol}`
+                    : `Sell ${tradeShares} shares of ${symbol}`}
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
